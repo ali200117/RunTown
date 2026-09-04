@@ -9,6 +9,7 @@ from typing import Optional, Sequence
 import cv2
 import numpy as np
 
+from kinetirun.calibration import Baseline, CalibrationState
 from kinetirun.tracking import BodyPose
 from kinetirun.vision.landmarks import POSE_CONNECTIONS, Landmark
 
@@ -86,6 +87,9 @@ def format_stats(
     fps: Optional[float],
     latency_ms: Optional[float],
     pose: Optional[BodyPose],
+    state: Optional[CalibrationState] = None,
+    progress: float = 0.0,
+    baseline: Optional[Baseline] = None,
 ) -> list[str]:
     """Build the debug readout shown in the corner of the window.
 
@@ -98,8 +102,28 @@ def format_stats(
         f"Inference: {latency_ms:.1f} ms" if latency_ms is not None else "Inference: --",
     ]
 
+    if state is not None:
+        if state is CalibrationState.COMPLETE:
+            lines.append("Calibrated")
+        else:
+            lines.append(f"CALIBRATING {state.value}  {progress * 100:.0f}%")
+            lines.append("Stand still, facing the camera")
+
     if pose is None:
         lines.append("Pose: NOT DETECTED")
+        return lines
+
+    # Once calibrated, the body-relative ratios matter far more than the raw
+    # metres: these are the numbers the movement detectors actually consume.
+    if baseline is not None:
+        lines.append(f"Hip drop:  {baseline.hip_drop(pose):+.2f}")
+        lines.append(f"Sideways:  {baseline.lateral_offset(pose):+.2f} sw")
+        lines.append(f"Vertical:  {baseline.vertical_offset(pose):+.2f} sw")
+        lines.append(f"Knee angle: {pose.mean_knee_angle:.0f} deg")
+        lines.append(
+            f"Lower-body vis: {pose.lower_body_visibility:.2f}"
+            f"{'' if pose.is_reliable() else '  UNRELIABLE'}"
+        )
         return lines
 
     lines.append(f"Lower-body vis: {pose.lower_body_visibility:.2f}"

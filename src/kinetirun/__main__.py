@@ -1,7 +1,7 @@
 """Entry point: `uv run python -m kinetirun`.
 
-Phase 4 milestone - camera and pose estimation feeding our own BodyPose, with
-the derived body measurements shown live. No movement detection yet.
+Phase 5 milestone - stand still to calibrate, then watch the body-relative
+ratios that movement detection will consume. Press R to recalibrate.
 """
 
 import time
@@ -9,11 +9,12 @@ import time
 import cv2
 
 from kinetirun.camera import Camera, CameraError, FpsCounter
+from kinetirun.calibration import CalibrationState, Calibrator
 from kinetirun.tracking import BodyPose
 from kinetirun.ui import draw_skeleton, draw_text, format_stats
 from kinetirun.vision import PoseEstimationError, PoseEstimator
 
-WINDOW_NAME = "KinetiRun - body model"
+WINDOW_NAME = "KinetiRun - calibration"
 
 KEY_ESCAPE = 27
 
@@ -26,12 +27,13 @@ FPS_WARNING_AFTER_FRAMES = 60
 def run() -> None:
     """Main capture and inference loop."""
     counter = FpsCounter()
+    calibrator = Calibrator()
     frames = 0
     warned = False
 
     with Camera() as camera, PoseEstimator() as estimator:
         width, height = camera.resolution
-        print(f"Camera opened at {width}x{height}. Press Q or Escape to quit.")
+        print(f"Camera opened at {width}x{height}. Q quits, R recalibrates.")
 
         # MediaPipe's VIDEO mode wants a timestamp that starts near zero and
         # only ever increases. Anchoring to the moment we start, rather than to
@@ -54,7 +56,19 @@ def run() -> None:
                 if pose is not None:
                     draw_skeleton(frame, pose.image)
 
-                draw_text(frame, format_stats(counter.fps, estimator.latency_ms, pose))
+                calibrator.update(pose)
+
+                draw_text(
+                    frame,
+                    format_stats(
+                        counter.fps,
+                        estimator.latency_ms,
+                        pose,
+                        state=calibrator.state,
+                        progress=calibrator.progress,
+                        baseline=calibrator.baseline,
+                    ),
+                )
                 cv2.imshow(WINDOW_NAME, frame)
 
                 if (
@@ -73,6 +87,8 @@ def run() -> None:
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord("q"), KEY_ESCAPE):
                     break
+                if key == ord("r"):
+                    calibrator.reset()
 
                 if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
                     break
