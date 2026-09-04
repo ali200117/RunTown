@@ -58,7 +58,7 @@ class Camera:
                 this True. The rest of KinetiRun assumes frames are mirrored,
                 and flipping in more than one place will invert left/right in
                 Phase 8.
-            exposure: leave None to let the camera auto-expose. Auto-exposure
+            exposure: None explicitly re-enables auto-exposure. Auto-exposure
                 lengthens the exposure time in dim light, which directly costs
                 frame rate - this camera drops from 30 to 10 FPS in a dark
                 room. Pass a value in log2 seconds (-6 is 1/64s, fast enough
@@ -94,8 +94,13 @@ class Camera:
         capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
 
-        if self.exposure is not None:
-            # 0.25 is DirectShow's magic value for "manual exposure".
+        # Exposure mode persists in the driver between processes, so a value
+        # left behind by another program would silently follow us here. Always
+        # state which mode we want rather than inheriting one.
+        # DirectShow magic values: 0.75 = auto, 0.25 = manual.
+        if self.exposure is None:
+            capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
+        else:
             capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
             capture.set(cv2.CAP_PROP_EXPOSURE, self.exposure)
 

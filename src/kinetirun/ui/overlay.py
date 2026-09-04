@@ -1,0 +1,118 @@
+"""Drawing pose data onto frames, for debugging.
+
+Everything here is for the human watching the window. It never feeds back into
+detection, so it is free to be approximate.
+"""
+
+from typing import Optional, Sequence
+
+import cv2
+import numpy as np
+
+from kinetirun.tracking import BodyPose
+from kinetirun.vision.landmarks import POSE_CONNECTIONS, Landmark
+
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+GREEN = (0, 255, 0)
+YELLOW = (0, 220, 255)
+RED = (0, 0, 255)
+BLACK = (0, 0, 0)
+
+# Below this, MediaPipe is guessing. It ALWAYS returns a coordinate for every
+# one of the 33 landmarks - including body parts outside the frame entirely -
+# so visibility is the only thing separating a measurement from a fabrication.
+VISIBILITY_THRESHOLD = 0.5
+
+
+def to_pixels(landmark, width: int, height: int) -> tuple[int, int]:
+    """Convert a normalized landmark (0..1) to pixel coordinates.
+
+    Normalized means "fraction of the image", so x=0.5 is the horizontal
+    centre whatever the resolution. Values can fall slightly outside 0..1 when
+    the model extrapolates a joint just off-screen.
+    """
+    return (int(landmark.x * width), int(landmark.y * height))
+
+
+def draw_skeleton(frame: np.ndarray, landmarks: Sequence) -> None:
+    """Draw the skeleton in place.
+
+    Colour encodes confidence, so problems are visible at a glance:
+        green  - both endpoints confidently visible
+        yellow - one endpoint uncertain
+        red    - the model is essentially guessing
+    """
+    height, width = frame.shape[:2]
+
+    for start_index, end_index in POSE_CONNECTIONS:
+        start = landmarks[start_index]
+        end = landmarks[end_index]
+
+        confident = sum(
+            1 for point in (start, end) if point.visibility >= VISIBILITY_THRESHOLD
+        )
+        colour = (RED, YELLOW, GREEN)[confident]
+
+        cv2.line(
+            frame,
+            to_pixels(start, width, height),
+            to_pixels(end, width, height),
+            colour,
+            2,
+            cv2.LINE_AA,
+        )
+
+    for index in Landmark:
+        point = landmarks[index]
+        if point.visibility < VISIBILITY_THRESHOLD:
+            continue
+        cv2.circle(frame, to_pixels(point, width, height), 3, GREEN, -1, cv2.LINE_AA)
+
+
+def draw_text(frame: np.ndarray, lines: Sequence[str], origin: tuple[int, int] = (10, 30)) -> None:
+    """Draw stacked lines of debug text with a black outline.
+
+    The outline matters: plain green text vanishes against a bright wall, and
+    webcam footage is not a controlled backdrop.
+    """
+    x, y = origin
+    for offset, line in enumerate(lines):
+        position = (x, y + offset * 26)
+        cv2.putText(frame, line, position, FONT, 0.65, BLACK, 4, cv2.LINE_AA)
+        cv2.putText(frame, line, position, FONT, 0.65, GREEN, 2, cv2.LINE_AA)
+
+
+def format_stats(
+    fps: Optional[float],
+    latency_ms: Optional[float],
+    pose: Optional[BodyPose],
+) -> list[str]:
+    """Build the debug readout shown in the corner of the window.
+
+    Everything below the first two lines comes from BodyPose, not from
+    MediaPipe. This readout is how we sanity-check the body model against
+    reality before any detector depends on it.
+    """
+    lines = [
+        f"FPS: {fps:.1f}" if fps is not None else "FPS: --",
+        f"Inference: {latency_ms:.1f} ms" if latency_ms is not None else "Inference: --",
+    ]
+
+    if pose is None:
+        lines.append("Pose: NOT DETECTED")
+        return lines
+
+    lines.append(f"Lower-body vis: {pose.lower_body_visibility:.2f}"
+                 f"{'' if pose.is_reliable() else '  UNRELIABLE'}")
+    # The body-size rulers Phase 5 will calibrate against.
+    lines.append(f"Shoulder width: {pose.shoulder_width:.3f} m")
+    lines.append(f"Torso height:   {pose.torso_height:.3f} m")
+    # The squat signals. Hip height should FALL as you descend; if it rises,
+    # the y-axis convention is inverted and every detector would be backwards.
+    lines.append(f"Hip above ankles: {pose.hip_height_above_ankles:.3f} m")
+    lines.append(f"Knee angle: {pose.mean_knee_angle:.0f} deg")
+    # The side-step signal, in image space: world space is anchored to the
+    # hips and therefore cannot see the body moving across the room.
+    lines.append(f"Hip x (image): {pose.hip_center_image.x:.3f}")
+
+    return lines
