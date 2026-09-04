@@ -36,9 +36,10 @@ class Camera:
     def __init__(
         self,
         device_index: int = 0,
-        width: int = 1280,
-        height: int = 720,
+        width: int = 640,
+        height: int = 480,
         mirror: bool = True,
+        exposure: Optional[float] = None,
     ) -> None:
         """Store configuration only. The device is opened in `open()`.
 
@@ -50,15 +51,26 @@ class Camera:
             device_index: which camera. Built-in webcam is usually 0.
             width, height: requested resolution. The driver may ignore this -
                 always trust `frame.shape`, never the value you asked for.
+                640x480 is deliberate: MediaPipe rescales its input to 256x256
+                anyway, so a larger frame buys no accuracy and costs real time
+                in the BGR->RGB conversion in Phase 3.
             mirror: flip horizontally so the user sees a mirror image. Keep
                 this True. The rest of KinetiRun assumes frames are mirrored,
                 and flipping in more than one place will invert left/right in
                 Phase 8.
+            exposure: leave None to let the camera auto-expose. Auto-exposure
+                lengthens the exposure time in dim light, which directly costs
+                frame rate - this camera drops from 30 to 10 FPS in a dark
+                room. Pass a value in log2 seconds (-6 is 1/64s, fast enough
+                for 30 FPS) to lock it. The tradeoff is a darker image, and
+                MediaPipe needs to actually see the body, so auto is the
+                default and better lighting is the better fix.
         """
         self.device_index = device_index
         self.width = width
         self.height = height
         self.mirror = mirror
+        self.exposure = exposure
         self._capture: Optional[cv2.VideoCapture] = None
 
     def open(self) -> None:
@@ -81,6 +93,11 @@ class Camera:
 
         capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+
+        if self.exposure is not None:
+            # 0.25 is DirectShow's magic value for "manual exposure".
+            capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+            capture.set(cv2.CAP_PROP_EXPOSURE, self.exposure)
 
         self._capture = capture
 

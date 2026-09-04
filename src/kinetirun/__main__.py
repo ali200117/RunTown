@@ -20,6 +20,11 @@ BLACK = (0, 0, 0)
 
 KEY_ESCAPE = 27
 
+# Below this the temporal signals movement detection depends on get too coarse:
+# a one-second squat sampled 20 times is workable, sampled 10 times is not.
+LOW_FPS_WARNING = 20.0
+FPS_WARNING_AFTER_FRAMES = 60
+
 
 def draw_fps(frame: np.ndarray, fps: Optional[float]) -> None:
     """Draw the FPS readout onto the frame, in place.
@@ -41,6 +46,8 @@ def draw_fps(frame: np.ndarray, fps: Optional[float]) -> None:
 def run() -> None:
     """Main capture loop."""
     counter = FpsCounter()
+    frames = 0
+    warned = False
 
     with Camera() as camera:
         width, height = camera.resolution
@@ -50,6 +57,24 @@ def run() -> None:
             while True:
                 frame = camera.read()
                 counter.tick(time.perf_counter())
+                frames += 1
+
+                # Frame rate on this camera is lighting-dependent: a dim room
+                # makes auto-exposure lengthen each frame, halving or thirding
+                # the rate. Say so out loud, once - otherwise a dark evening
+                # looks like a broken movement detector later on.
+                if (
+                    not warned
+                    and frames == FPS_WARNING_AFTER_FRAMES
+                    and counter.fps is not None
+                    and counter.fps < LOW_FPS_WARNING
+                ):
+                    warned = True
+                    print(
+                        f"Warning: only {counter.fps:.1f} FPS. This is almost "
+                        "always too little light - the camera lengthens its "
+                        "exposure and drops frames. Try brighter lighting."
+                    )
 
                 draw_fps(frame, counter.fps)
                 cv2.imshow(WINDOW_NAME, frame)
