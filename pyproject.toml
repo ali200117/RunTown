@@ -1,0 +1,28 @@
+[project]
+name = "kinetirun"
+version = "0.1.0"
+description = "Full-body computer vision game controller - turn real physical movement into game input."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Ali" }]
+
+# Runtime dependencies are added in the phase that actually needs them.
+# Phase 2: opencv-python | Phase 3: mediapipe | Phase 12: pyautogui
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kinetirun"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
