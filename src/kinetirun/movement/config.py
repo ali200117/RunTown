@@ -59,3 +59,47 @@ class SquatConfig:
 
     velocity_window: float = 0.15
     """Seconds over which speed is averaged."""
+
+
+@dataclass(frozen=True)
+class SideConfig:
+    """Tuning for SideDetector.
+
+    Offset is `lateral_offset`: sideways hip displacement from neutral measured
+    in SHOULDER WIDTHS. Negative is toward the user's own left, because frames
+    are mirrored. One shoulder width is roughly a comfortable side step.
+    """
+
+    min_offset: float = 0.55
+    """How far the hips must travel sideways for the step to count."""
+
+    target_offset: float = 0.85
+    """Offset that scores full quality."""
+
+    neutral_offset: float = 0.20
+    """Inside this band the user counts as centred. Returning here completes
+    the movement and re-arms the detector."""
+
+    min_foot_travel: float = 0.20
+    """How far the FEET must move, in shoulder widths. This is the anti-lean
+    rule: tilting the upper body shifts the hips without moving the feet, and
+    must not register as a side step. Set to 0.0 to disable - useful if the
+    feet fall outside the camera frame."""
+
+    start_rate: float = 0.6
+    """Sideways speed, in shoulder widths per second, that starts a step."""
+
+    settle_rate: float = 0.35
+    """Below this speed the outward movement is considered finished."""
+
+    return_rate: float = 0.35
+    """Speed back toward centre that marks the return."""
+
+    min_duration: float = 0.25
+    """Faster than this is a twitch, not a step."""
+
+    max_duration: float = 3.0
+
+    min_visibility: float = 0.5
+
+    velocity_window: float = 0.15

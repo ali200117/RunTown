@@ -235,6 +235,18 @@ class BodyPose:
         )
 
     @property
+    def ankle_center_image(self) -> Point3D:
+        """Centre between the ankles, in normalized image coordinates.
+
+        The anti-lean signal. Leaning sideways swings the shoulders and drags
+        the hips a little, but the feet stay put. An actual side step moves
+        them. Comparing the two is what separates a step from a tilt.
+        """
+        return self.image[Landmark.LEFT_ANKLE].midpoint(
+            self.image[Landmark.RIGHT_ANKLE]
+        )
+
+    @property
     def shoulder_width_image(self) -> float:
         """Shoulder width as a fraction of frame width.
 

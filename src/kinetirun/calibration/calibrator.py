@@ -150,6 +150,7 @@ class Calibrator:
             knee_angle=median_of(lambda p: p.mean_knee_angle),
             hip_x_image=median_of(lambda p: p.hip_center_image.x),
             hip_y_image=median_of(lambda p: p.hip_center_image.y),
+            ankle_x_image=median_of(lambda p: p.ankle_center_image.x),
             shoulder_width_image=median_of(lambda p: p.shoulder_width_image),
             sample_count=len(self._samples),
         )

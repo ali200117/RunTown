@@ -1,7 +1,7 @@
 """Entry point: `uv run python -m kinetirun`.
 
-Phase 7 milestone - full squat detection with a live state machine readout.
-Still no game input: completed squats are printed and shown, nothing else.
+Phase 8 milestone - squat and side-step detection running together. Still no
+game input: completed movements are printed and shown, nothing else.
 """
 
 import time
@@ -10,12 +10,12 @@ import cv2
 
 from kinetirun.camera import Camera, CameraError, FpsCounter
 from kinetirun.calibration import CalibrationState, Calibrator
-from kinetirun.movement import SquatDetector
+from kinetirun.movement import SideDetector, SquatDetector
 from kinetirun.tracking import BodyPose, MotionHistory, PoseSmoother
 from kinetirun.ui import draw_skeleton, draw_text, format_stats
 from kinetirun.vision import PoseEstimationError, PoseEstimator
 
-WINDOW_NAME = "KinetiRun - squat"
+WINDOW_NAME = "KinetiRun - movements"
 
 KEY_ESCAPE = 27
 
@@ -32,7 +32,8 @@ def run() -> None:
     smoother = PoseSmoother()
     history = MotionHistory()
     squats = SquatDetector()
-    squat_count = 0
+    sides = SideDetector()
+    counts: dict[str, int] = {}
     last_event = None
     frames = 0
     warned = False
@@ -72,13 +73,17 @@ def run() -> None:
                 # Detection only runs once a baseline exists: every threshold
                 # is expressed relative to it.
                 if calibrator.baseline is not None:
-                    event = squats.update(pose, calibrator.baseline, history)
-                    if event is not None:
-                        squat_count += 1
+                    # Detectors are independent and all see every frame. None
+                    # of them knows the others exist.
+                    for detector in (squats, sides):
+                        event = detector.update(pose, calibrator.baseline, history)
+                        if event is None:
+                            continue
+                        counts[event.type.value] = counts.get(event.type.value, 0) + 1
                         last_event = event
                         print(
-                            f"{event.type.value}  #{squat_count}  "
-                            f"depth={event.displacement:.2f}  "
+                            f"{event.type.value}  #{counts[event.type.value]}  "
+                            f"size={event.displacement:.2f}  "
                             f"{event.duration:.2f}s  quality={event.quality:.2f}"
                         )
 
@@ -94,7 +99,9 @@ def run() -> None:
                         history=history,
                         squat_state=squats.state.value,
                         squat_progress=squats.progress,
-                        squat_count=squat_count,
+                        side_state=sides.state.value,
+                        side_progress=sides.progress,
+                        counts=counts,
                         last_event=last_event,
                     ),
                 )
@@ -121,6 +128,7 @@ def run() -> None:
                     smoother.reset()
                     history.clear()
                     squats.reset()
+                    sides.reset()
 
                 if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
                     break

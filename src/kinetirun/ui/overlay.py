@@ -94,7 +94,9 @@ def format_stats(
     history: Optional[MotionHistory] = None,
     squat_state: Optional[str] = None,
     squat_progress: float = 0.0,
-    squat_count: int = 0,
+    side_state: Optional[str] = None,
+    side_progress: float = 0.0,
+    counts: Optional[dict] = None,
     last_event: Optional[MovementEvent] = None,
 ) -> list[str]:
     """Build the debug readout shown in the corner of the window.
@@ -130,7 +132,13 @@ def format_stats(
             # The state machine is the thing worth watching: it shows WHY a
             # movement was or was not accepted, which a bare counter cannot.
             lines.append(f"SQUAT: {squat_state}  {squat_progress * 100:.0f}%")
-            lines.append(f"Completed: {squat_count}")
+        if side_state is not None:
+            lines.append(f"SIDE:  {side_state}  {side_progress * 100:.0f}%")
+        if counts:
+            lines.append("  ".join(
+                f"{name.replace('_COMPLETED', '')}={count}"
+                for name, count in sorted(counts.items())
+            ))
             if last_event is not None:
                 lines.append(
                     f"Last: depth {last_event.displacement:.2f}  "

@@ -29,6 +29,7 @@ class Baseline:
     knee_angle: float              # degrees, standing
     hip_x_image: float             # 0..1 across the frame
     hip_y_image: float             # 0..1 down the frame
+    ankle_x_image: float           # 0..1 across the frame
     shoulder_width_image: float    # fraction of frame width - the image ruler
     sample_count: int
 
@@ -57,6 +58,16 @@ class Baseline:
         if self.shoulder_width_image <= 0:
             return 0.0
         return (pose.hip_center_image.x - self.hip_x_image) / self.shoulder_width_image
+
+    def foot_offset(self, pose: BodyPose) -> float:
+        """Sideways foot displacement from neutral, in shoulder widths.
+
+        Same units and sign convention as lateral_offset, so the two are
+        directly comparable: a real step moves both, a lean moves only the hips.
+        """
+        if self.shoulder_width_image <= 0:
+            return 0.0
+        return (pose.ankle_center_image.x - self.ankle_x_image) / self.shoulder_width_image
 
     def vertical_offset(self, pose: BodyPose) -> float:
         """Vertical displacement from neutral, in shoulder widths.
