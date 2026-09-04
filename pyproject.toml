@@ -9,7 +9,9 @@ authors = [{ name = "Ali" }]
 
 # Runtime dependencies are added in the phase that actually needs them.
 # Phase 2: opencv-python | Phase 3: mediapipe | Phase 12: pyautogui
-dependencies = []
+dependencies = [
+    "opencv-python>=5.0.0.93",
+]
 
 [dependency-groups]
 dev = [
