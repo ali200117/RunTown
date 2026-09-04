@@ -103,3 +103,49 @@ class SideConfig:
     min_visibility: float = 0.5
 
     velocity_window: float = 0.15
+
+
+@dataclass(frozen=True)
+class JumpConfig:
+    """Tuning for JumpDetector.
+
+    Height is upward hip displacement from neutral, in SHOULDER WIDTHS.
+    Positive is up, which is the opposite sign from raw image coordinates.
+    """
+
+    min_height: float = 0.18
+    """How high the hips must rise for the jump to count. Lower than the squat
+    and side thresholds on purpose: a jump is a small displacement performed
+    fast, and speed does most of the work of proving intent."""
+
+    target_height: float = 0.32
+    """Height that scores full quality."""
+
+    min_foot_lift: float = 0.08
+    """How far the FEET must leave the ground, in shoulder widths. The
+    anti-cheat rule: rising onto the toes lifts the hips without lifting the
+    ankles. Set to 0.0 to disable when the feet are outside the frame."""
+
+    neutral_band: float = 0.07
+    """Inside this band of the baseline the user counts as grounded."""
+
+    takeoff_rate: float = 1.0
+    """Upward speed, in shoulder widths per second, that starts a jump. This is
+    the main thing separating a jump from slowly standing up - it is far higher
+    than the squat and side thresholds."""
+
+    settle_rate: float = 0.35
+    """Below this upward speed the rise is over: the apex."""
+
+    landing_rate: float = 0.5
+    """Downward speed that marks the descent back to the ground."""
+
+    min_duration: float = 0.15
+    max_duration: float = 1.5
+    """A jump is over quickly. Anything longer is not a jump."""
+
+    min_visibility: float = 0.5
+
+    velocity_window: float = 0.12
+    """Shorter than the other detectors: a jump is brief, and a long averaging
+    window would smear takeoff and apex together."""

@@ -30,6 +30,7 @@ class Baseline:
     hip_x_image: float             # 0..1 across the frame
     hip_y_image: float             # 0..1 down the frame
     ankle_x_image: float           # 0..1 across the frame
+    ankle_y_image: float           # 0..1 down the frame
     shoulder_width_image: float    # fraction of frame width - the image ruler
     sample_count: int
 
@@ -68,6 +69,18 @@ class Baseline:
         if self.shoulder_width_image <= 0:
             return 0.0
         return (pose.ankle_center_image.x - self.ankle_x_image) / self.shoulder_width_image
+
+    def foot_lift(self, pose: BodyPose) -> float:
+        """How far the feet have risen from neutral, in shoulder widths.
+
+        Positive is upward, unlike vertical_offset - a lift reads more
+        naturally as a positive number. This is the anti-cheat signal for
+        jumps: rising onto the toes lifts the hips a little while the ankles
+        barely move, whereas an actual jump takes the whole body up.
+        """
+        if self.shoulder_width_image <= 0:
+            return 0.0
+        return (self.ankle_y_image - pose.ankle_center_image.y) / self.shoulder_width_image
 
     def vertical_offset(self, pose: BodyPose) -> float:
         """Vertical displacement from neutral, in shoulder widths.

@@ -96,6 +96,8 @@ def format_stats(
     squat_progress: float = 0.0,
     side_state: Optional[str] = None,
     side_progress: float = 0.0,
+    jump_state: Optional[str] = None,
+    jump_progress: float = 0.0,
     counts: Optional[dict] = None,
     last_event: Optional[MovementEvent] = None,
 ) -> list[str]:
@@ -134,6 +136,8 @@ def format_stats(
             lines.append(f"SQUAT: {squat_state}  {squat_progress * 100:.0f}%")
         if side_state is not None:
             lines.append(f"SIDE:  {side_state}  {side_progress * 100:.0f}%")
+        if jump_state is not None:
+            lines.append(f"JUMP:  {jump_state}  {jump_progress * 100:.0f}%")
         if counts:
             lines.append("  ".join(
                 f"{name.replace('_COMPLETED', '')}={count}"

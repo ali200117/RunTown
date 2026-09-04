@@ -1,7 +1,7 @@
 """Entry point: `uv run python -m kinetirun`.
 
-Phase 8 milestone - squat and side-step detection running together. Still no
-game input: completed movements are printed and shown, nothing else.
+Phase 9 milestone - all four movements detected: squat, side left, side right
+and jump. Still no game input: completed movements are printed and shown.
 """
 
 import time
@@ -10,7 +10,7 @@ import cv2
 
 from kinetirun.camera import Camera, CameraError, FpsCounter
 from kinetirun.calibration import CalibrationState, Calibrator
-from kinetirun.movement import SideDetector, SquatDetector
+from kinetirun.movement import JumpDetector, SideDetector, SquatDetector
 from kinetirun.tracking import BodyPose, MotionHistory, PoseSmoother
 from kinetirun.ui import draw_skeleton, draw_text, format_stats
 from kinetirun.vision import PoseEstimationError, PoseEstimator
@@ -33,6 +33,7 @@ def run() -> None:
     history = MotionHistory()
     squats = SquatDetector()
     sides = SideDetector()
+    jumps = JumpDetector()
     counts: dict[str, int] = {}
     last_event = None
     frames = 0
@@ -75,7 +76,7 @@ def run() -> None:
                 if calibrator.baseline is not None:
                     # Detectors are independent and all see every frame. None
                     # of them knows the others exist.
-                    for detector in (squats, sides):
+                    for detector in (squats, sides, jumps):
                         event = detector.update(pose, calibrator.baseline, history)
                         if event is None:
                             continue
@@ -101,6 +102,8 @@ def run() -> None:
                         squat_progress=squats.progress,
                         side_state=sides.state.value,
                         side_progress=sides.progress,
+                        jump_state=jumps.state.value,
+                        jump_progress=jumps.progress,
                         counts=counts,
                         last_event=last_event,
                     ),
@@ -129,6 +132,7 @@ def run() -> None:
                     history.clear()
                     squats.reset()
                     sides.reset()
+                    jumps.reset()
 
                 if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
                     break
