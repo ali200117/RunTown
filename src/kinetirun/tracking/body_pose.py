@@ -246,6 +246,86 @@ class BodyPose:
             self.image[Landmark.RIGHT_ANKLE]
         )
 
+    def arm_elevation(self, side: str) -> float:
+        """How far one arm is raised, in degrees. "left" or "right".
+
+        Measured as the angle of the shoulder-to-wrist line away from hanging
+        straight down:
+
+            0   - arm hanging at your side
+            90  - arm straight out horizontally
+            180 - arm straight up
+
+        An angle, so it is automatically independent of body size and camera
+        distance, and it uses the arm's WHOLE travel rather than only its
+        sideways component. Raising a hanging arm to horizontal moves the wrist
+        barely half a shoulder width sideways but a full 90 degrees here, which
+        is why this signal is far harder to confuse with ordinary fidgeting.
+        """
+        shoulder_index = (
+            Landmark.LEFT_SHOULDER if side == "left" else Landmark.RIGHT_SHOULDER
+        )
+        wrist_index = Landmark.LEFT_WRIST if side == "left" else Landmark.RIGHT_WRIST
+
+        shoulder = self.image[shoulder_index]
+        wrist = self.image[wrist_index]
+
+        across = abs(wrist.x - shoulder.x)
+        # Image y grows downward, so a hanging wrist sits BELOW the shoulder
+        # and this is positive.
+        below = wrist.y - shoulder.y
+
+        return math.degrees(math.atan2(across, below))
+
+    @property
+    def arm_raise(self) -> float:
+        """Which arm the USER raised, and how far, in degrees.
+
+            +90 - the user's own right arm out horizontally
+            -90 - the user's own left arm out horizontally
+              0 - both arms hanging, OR both raised equally
+
+        Note the crossed mapping: MediaPipe's LEFT_* landmarks are the user's
+        RIGHT side, because Camera mirrors the frame before the model sees it
+        and the model reads anatomy from appearance. See the Landmark docstring
+        - this is the one place in the project where that distinction bites.
+
+        Collapsing two arms into one signed number keeps the detector simple
+        and makes the ambiguous case safe: raising both arms cancels to zero
+        and triggers nothing, which is the right answer when the gesture does
+        not name a direction.
+        """
+        return self.arm_elevation("left") - self.arm_elevation("right")
+
+    @property
+    def torso_tilt(self) -> float:
+        """Sideways lean of the torso, in degrees. Positive is to the right.
+
+        The angle of the hip-centre-to-shoulder-centre line away from vertical,
+        measured in image space. 0 is upright, +25 is a clear lean to the
+        screen's right - which is the user's own right, since frames are
+        mirrored.
+
+        An angle rather than a distance, because an angle is already
+        independent of body size and camera distance: leaning 20 degrees is 20
+        degrees whether you are tall or standing far back. No shoulder-width
+        division needed.
+        """
+        hips = self.hip_center_image
+        shoulders = self.shoulder_center_image
+
+        across = shoulders.x - hips.x
+        # Image y grows downward, so shoulders sit at a SMALLER y than hips.
+        # Subtracting in this order makes `up` positive.
+        up = hips.y - shoulders.y
+
+        if up <= 0:
+            # Shoulders at or below the hips: the person is bent double or
+            # badly tracked, and an angle would be meaningless.
+            return 0.0
+
+        return math.degrees(math.atan2(across, up))
+
     @property
     def shoulder_width_image(self) -> float:
         """Shoulder width as a fraction of frame width.

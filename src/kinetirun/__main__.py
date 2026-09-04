@@ -1,21 +1,30 @@
 """Entry point: `uv run python -m kinetirun`.
 
-Phase 9 milestone - all four movements detected: squat, side left, side right
-and jump. Still no game input: completed movements are printed and shown.
+The full pipeline:
+
+    camera -> pose -> body model -> smoothing -> history -> calibration
+           -> movement engine -> events -> game profile -> input adapter
+
+Keys:
+    Q / Escape  quit
+    R           recalibrate
+    G           toggle game input on and off
 """
 
 import time
 
 import cv2
 
+from kinetirun.calibration import Calibrator
 from kinetirun.camera import Camera, CameraError, FpsCounter
-from kinetirun.calibration import CalibrationState, Calibrator
-from kinetirun.movement import JumpDetector, SideDetector, SquatDetector
+from kinetirun.game import SUBWAY_SURFERS
+from kinetirun.input import InputDispatcher, PyAutoGuiAdapter
+from kinetirun.movement import MovementEngine
 from kinetirun.tracking import BodyPose, MotionHistory, PoseSmoother
-from kinetirun.ui import draw_skeleton, draw_text, format_stats
+from kinetirun.ui import draw_event_flash, draw_skeleton, draw_text, format_stats
 from kinetirun.vision import PoseEstimationError, PoseEstimator
 
-WINDOW_NAME = "KinetiRun - movements"
+WINDOW_NAME = "KinetiRun"
 
 KEY_ESCAPE = 27
 
@@ -26,26 +35,31 @@ FPS_WARNING_AFTER_FRAMES = 60
 
 
 def run() -> None:
-    """Main capture and inference loop."""
+    """Main loop."""
     counter = FpsCounter()
-    calibrator = Calibrator()
     smoother = PoseSmoother()
     history = MotionHistory()
-    squats = SquatDetector()
-    sides = SideDetector()
-    jumps = JumpDetector()
-    counts: dict[str, int] = {}
-    last_event = None
+    calibrator = Calibrator()
+    # Sideways input is an ARM SWIPE: fast enough to react with in a game, and
+    # it works with the legs out of frame. Use "lean" for a whole-body tilt or
+    # "step" for a real side step.
+    engine = MovementEngine(sideways="arm")
+
+    # Input starts DISABLED. Keystrokes go to whichever window has focus, so
+    # enabling it is always a deliberate act by the user.
+    dispatcher = InputDispatcher(SUBWAY_SURFERS, PyAutoGuiAdapter())
+
     frames = 0
     warned = False
 
     with Camera() as camera, PoseEstimator() as estimator:
         width, height = camera.resolution
-        print(f"Camera opened at {width}x{height}. Q quits, R recalibrates.")
+        print(f"Camera opened at {width}x{height}.")
+        print(f"Profile: {SUBWAY_SURFERS.name}, sideways mode: {engine.sideways}.")
+        print("Q quits, R recalibrates, G toggles input.")
 
         # MediaPipe's VIDEO mode wants a timestamp that starts near zero and
-        # only ever increases. Anchoring to the moment we start, rather than to
-        # the epoch, keeps the numbers small and readable while debugging.
+        # only ever increases.
         start_time = time.perf_counter()
 
         try:
@@ -55,14 +69,13 @@ def run() -> None:
                 counter.tick(now)
                 frames += 1
 
-                timestamp_ms = int((now - start_time) * 1000)
-                result = estimator.estimate(frame, timestamp_ms)
+                result = estimator.estimate(frame, int((now - start_time) * 1000))
 
-                # This is the boundary crossing: from here on the loop works
-                # with our own type, and the MediaPipe result is discarded.
+                # The boundary crossing: from here on we work with our own type
+                # and the MediaPipe result is discarded.
                 pose = BodyPose.from_landmarker_result(result, timestamp=now)
-                # Order matters: smooth before anything measures the pose, so
-                # every consumer sees the same stable numbers.
+                # Smooth before anything measures the pose, so every consumer
+                # downstream sees the same stable numbers.
                 pose = smoother.smooth(pose)
                 history.append(pose)
 
@@ -74,18 +87,17 @@ def run() -> None:
                 # Detection only runs once a baseline exists: every threshold
                 # is expressed relative to it.
                 if calibrator.baseline is not None:
-                    # Detectors are independent and all see every frame. None
-                    # of them knows the others exist.
-                    for detector in (squats, sides, jumps):
-                        event = detector.update(pose, calibrator.baseline, history)
-                        if event is None:
-                            continue
-                        counts[event.type.value] = counts.get(event.type.value, 0) + 1
-                        last_event = event
+                    events = engine.update(pose, calibrator.baseline, history)
+                    keys = dispatcher.dispatch(events)
+
+                    for event in events:
+                        key = SUBWAY_SURFERS.key_for(event.type)
+                        sent = "sent" if key in keys else "not sent"
                         print(
-                            f"{event.type.value}  #{counts[event.type.value]}  "
+                            f"{event.type.value}  "
                             f"size={event.displacement:.2f}  "
-                            f"{event.duration:.2f}s  quality={event.quality:.2f}"
+                            f"{event.duration:.2f}s  q={event.quality:.2f}  "
+                            f"-> {key.value if key else 'unmapped'} ({sent})"
                         )
 
                 draw_text(
@@ -98,16 +110,11 @@ def run() -> None:
                         progress=calibrator.progress,
                         baseline=calibrator.baseline,
                         history=history,
-                        squat_state=squats.state.value,
-                        squat_progress=squats.progress,
-                        side_state=sides.state.value,
-                        side_progress=sides.progress,
-                        jump_state=jumps.state.value,
-                        jump_progress=jumps.progress,
-                        counts=counts,
-                        last_event=last_event,
+                        engine=engine,
+                        input_status=dispatcher.status,
                     ),
                 )
+                draw_event_flash(frame, engine.last_event, now)
                 cv2.imshow(WINDOW_NAME, frame)
 
                 if (
@@ -130,13 +137,16 @@ def run() -> None:
                     calibrator.reset()
                     smoother.reset()
                     history.clear()
-                    squats.reset()
-                    sides.reset()
-                    jumps.reset()
+                    engine.reset()
+                if key == ord("g"):
+                    print(f"Game input {'ENABLED' if dispatcher.toggle() else 'disabled'}")
 
+                # Closing the window with the X button should also stop us.
                 if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
                     break
         finally:
+            # The camera is released by the `with` block; the OpenCV window is
+            # a separate resource with its own cleanup.
             cv2.destroyAllWindows()
 
 

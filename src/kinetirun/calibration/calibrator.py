@@ -148,10 +148,12 @@ class Calibrator:
             torso_height=median_of(lambda p: p.torso_height),
             hip_height=median_of(lambda p: p.hip_height_above_ankles),
             knee_angle=median_of(lambda p: p.mean_knee_angle),
+            torso_tilt=median_of(lambda p: p.torso_tilt),
             hip_x_image=median_of(lambda p: p.hip_center_image.x),
             hip_y_image=median_of(lambda p: p.hip_center_image.y),
             ankle_x_image=median_of(lambda p: p.ankle_center_image.x),
             ankle_y_image=median_of(lambda p: p.ankle_center_image.y),
+            arm_raise=median_of(lambda p: p.arm_raise),
             shoulder_width_image=median_of(lambda p: p.shoulder_width_image),
             sample_count=len(self._samples),
         )

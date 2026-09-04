@@ -11,9 +11,26 @@ from enum import IntEnum
 class Landmark(IntEnum):
     """Indices into MediaPipe's 33-point pose landmark list.
 
-    Left and right are from the SUBJECT's point of view, not the camera's.
-    Because Camera mirrors every frame, the subject's left hip also appears on
-    the left of the screen - which is what makes the mirror feel natural.
+    IMPORTANT - these labels are NOT the user's own left and right.
+
+    MediaPipe infers anatomy from what the image looks like, and Camera mirrors
+    every frame before the model sees it. In a mirrored frame the user's left
+    arm is the one that LOOKS like a right arm, so MediaPipe labels it
+    RIGHT_WRIST.
+
+    The reliable way to read these names, for a person facing the camera:
+
+        RIGHT_* is always the side that appears on the LEFT of the screen
+        LEFT_*  is always the side that appears on the RIGHT of the screen
+
+    and because frames are mirrored, screen-right is the user's own right. So:
+
+        LEFT_*  = the user's RIGHT side
+        RIGHT_* = the user's LEFT side
+
+    Anything symmetric - hip centre, shoulder width, mean knee angle - is
+    unaffected. Only code that treats one side differently from the other has
+    to care, which in practice means arm_raise.
     """
 
     NOSE = 0

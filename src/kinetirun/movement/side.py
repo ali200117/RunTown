@@ -43,6 +43,7 @@ class SideDetector:
         self._direction = 0          # -1 left, +1 right, 0 none in progress
         self._peak_offset = 0.0      # signed
         self._peak_foot_travel = 0.0
+        self._rejection: Optional[str] = None
 
     # ---- driving --------------------------------------------------------
 
@@ -56,7 +57,7 @@ class SideDetector:
         config = self.config
 
         if pose is None or not pose.is_reliable(config.min_visibility):
-            self._abandon()
+            self._abandon("lower body not tracked")
             return None
 
         offset = baseline.lateral_offset(pose)
@@ -74,7 +75,7 @@ class SideDetector:
             )
 
             if pose.timestamp - self._started_at > config.max_duration:
-                self._abandon()
+                self._abandon("took too long")
                 return None
 
         if self._state is SideState.CENTER:
@@ -92,6 +93,7 @@ class SideDetector:
 
     def reset(self) -> None:
         self._state = SideState.CENTER
+        self._rejection = None
         self._clear_attempt()
 
     # ---- states ---------------------------------------------------------
@@ -122,6 +124,10 @@ class SideDetector:
         else:
             # Stopped short. Requiring a return to centre stops a series of
             # small sways from eventually being accepted.
+            self._rejection = (
+                f"too small: {abs(self._peak_offset):.2f} < "
+                f"{self.config.min_offset:.2f} shoulder widths"
+            )
             self._state = SideState.WAIT_FOR_NEUTRAL
 
     def _on_at_target(self, rate: float) -> None:
@@ -144,6 +150,16 @@ class SideDetector:
             duration >= self.config.min_duration
             and self._peak_foot_travel >= self.config.min_foot_travel
         )
+
+        if not valid:
+            self._rejection = (
+                f"too fast: {duration:.2f}s < {self.config.min_duration:.2f}s"
+                if duration < self.config.min_duration
+                else f"feet did not move: {self._peak_foot_travel:.2f} < "
+                     f"{self.config.min_foot_travel:.2f}"
+            )
+        else:
+            self._rejection = None
 
         event = None
         if valid:
@@ -170,8 +186,9 @@ class SideDetector:
 
     # ---- helpers --------------------------------------------------------
 
-    def _abandon(self) -> None:
+    def _abandon(self, reason: str) -> None:
         if self._state is not SideState.CENTER:
+            self._rejection = reason
             self._state = SideState.WAIT_FOR_NEUTRAL
         self._clear_attempt()
 
@@ -191,6 +208,11 @@ class SideDetector:
     @property
     def state(self) -> SideState:
         return self._state
+
+    @property
+    def last_rejection(self) -> Optional[str]:
+        """Why the most recent attempt was not accepted, if any."""
+        return self._rejection
 
     @property
     def direction(self) -> int:

@@ -27,10 +27,12 @@ class Baseline:
     torso_height: float            # metres
     hip_height: float              # metres, hips above ankles, standing
     knee_angle: float              # degrees, standing
+    torso_tilt: float              # degrees, sideways lean when standing
     hip_x_image: float             # 0..1 across the frame
     hip_y_image: float             # 0..1 down the frame
     ankle_x_image: float           # 0..1 across the frame
     ankle_y_image: float           # 0..1 down the frame
+    arm_raise: float               # degrees, arms at rest
     shoulder_width_image: float    # fraction of frame width - the image ruler
     sample_count: int
 
@@ -59,6 +61,26 @@ class Baseline:
         if self.shoulder_width_image <= 0:
             return 0.0
         return (pose.hip_center_image.x - self.hip_x_image) / self.shoulder_width_image
+
+    def arm_reach(self, pose: BodyPose) -> float:
+        """How far an arm is raised relative to the calibrated resting pose.
+
+        Degrees. Positive means the RIGHT arm is up, negative the LEFT.
+
+        Measured against the baseline rather than against absolute vertical so
+        that resting with the arms slightly out, or with one hand in a pocket,
+        does not bias the signal.
+        """
+        return pose.arm_raise - self.arm_raise
+
+    def lean_angle(self, pose: BodyPose) -> float:
+        """Sideways lean relative to the calibrated neutral posture, in degrees.
+
+        Measured against the baseline rather than against true vertical:
+        nobody stands perfectly straight, and a camera is rarely perfectly
+        level. Both errors cancel out here.
+        """
+        return pose.torso_tilt - self.torso_tilt
 
     def foot_offset(self, pose: BodyPose) -> float:
         """Sideways foot displacement from neutral, in shoulder widths.

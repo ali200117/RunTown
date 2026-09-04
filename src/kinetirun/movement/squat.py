@@ -44,6 +44,10 @@ class SquatDetector:
         self._started_at: Optional[float] = None
         self._max_depth = 0.0
         self._min_knee_angle = 180.0
+        # Why the last attempt failed. Tuning without this is guesswork: a
+        # movement that "just does not register" could be too shallow, too
+        # fast, or not tracked at all, and those need opposite fixes.
+        self._rejection: Optional[str] = None
 
     # ---- driving --------------------------------------------------------
 
@@ -60,7 +64,7 @@ class SquatDetector:
         # coordinates for joints it cannot see, so without this the detector
         # would happily measure a fabricated leg.
         if pose is None or not pose.is_reliable(config.min_visibility):
-            self._abandon()
+            self._abandon("lower body not tracked")
             return None
 
         depth = baseline.hip_drop(pose)
@@ -74,7 +78,7 @@ class SquatDetector:
 
             if pose.timestamp - self._started_at > config.max_duration:
                 # Not a movement any more, just standing around bent over.
-                self._abandon()
+                self._abandon("took too long")
                 return None
 
         if self._state is SquatState.READY:
@@ -92,6 +96,7 @@ class SquatDetector:
 
     def reset(self) -> None:
         self._state = SquatState.READY
+        self._rejection = None
         self._clear_attempt()
 
     # ---- states ---------------------------------------------------------
@@ -114,6 +119,9 @@ class SquatDetector:
         else:
             # Stopped short. Requiring a return to neutral is what stops a
             # series of shallow bobs from eventually being accepted.
+            self._rejection = (
+                f"too shallow: {self._max_depth:.2f} < {self.config.min_depth:.2f}"
+            )
             self._state = SquatState.WAIT_FOR_NEUTRAL
 
     def _on_bottom(self, rate: float) -> None:
@@ -139,6 +147,13 @@ class SquatDetector:
             and knee_bend >= self.config.min_knee_bend
         )
 
+        if not valid:
+            self._rejection = (
+                f"too fast: {duration:.2f}s < {self.config.min_duration:.2f}s"
+                if duration < self.config.min_duration
+                else f"knees barely bent: {knee_bend:.0f} < {self.config.min_knee_bend:.0f} deg"
+            )
+
         event = None
         if valid:
             event = MovementEvent(
@@ -149,6 +164,8 @@ class SquatDetector:
                 quality=self._quality(duration),
             )
 
+        if valid:
+            self._rejection = None
         self._state = SquatState.READY
         self._clear_attempt()
         return event
@@ -161,9 +178,10 @@ class SquatDetector:
 
     # ---- helpers --------------------------------------------------------
 
-    def _abandon(self) -> None:
+    def _abandon(self, reason: str) -> None:
         """Give up on the current attempt without emitting anything."""
         if self._state is not SquatState.READY:
+            self._rejection = reason
             self._state = SquatState.WAIT_FOR_NEUTRAL
         self._clear_attempt()
 
@@ -187,6 +205,11 @@ class SquatDetector:
     @property
     def state(self) -> SquatState:
         return self._state
+
+    @property
+    def last_rejection(self) -> Optional[str]:
+        """Why the most recent attempt was not accepted, if any."""
+        return self._rejection
 
     @property
     def depth(self) -> float:
