@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from kinetirun.calibration import Baseline, CalibrationState
+from kinetirun.movement import MovementEvent
 from kinetirun.tracking import BodyPose, MotionHistory
 from kinetirun.vision.landmarks import POSE_CONNECTIONS, Landmark
 
@@ -91,6 +92,10 @@ def format_stats(
     progress: float = 0.0,
     baseline: Optional[Baseline] = None,
     history: Optional[MotionHistory] = None,
+    squat_state: Optional[str] = None,
+    squat_progress: float = 0.0,
+    squat_count: int = 0,
+    last_event: Optional[MovementEvent] = None,
 ) -> list[str]:
     """Build the debug readout shown in the corner of the window.
 
@@ -121,6 +126,17 @@ def format_stats(
         lines.append(f"Sideways:  {baseline.lateral_offset(pose):+.2f} sw")
         lines.append(f"Vertical:  {baseline.vertical_offset(pose):+.2f} sw")
         lines.append(f"Knee angle: {pose.mean_knee_angle:.0f} deg")
+        if squat_state is not None:
+            # The state machine is the thing worth watching: it shows WHY a
+            # movement was or was not accepted, which a bare counter cannot.
+            lines.append(f"SQUAT: {squat_state}  {squat_progress * 100:.0f}%")
+            lines.append(f"Completed: {squat_count}")
+            if last_event is not None:
+                lines.append(
+                    f"Last: depth {last_event.displacement:.2f}  "
+                    f"{last_event.duration:.2f}s  q={last_event.quality:.2f}"
+                )
+
         if history is not None:
             # Rates of change, in body units per second. These are what turn a
             # position into a movement: a detector reads direction and speed

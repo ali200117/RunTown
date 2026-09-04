@@ -1,7 +1,7 @@
 """Entry point: `uv run python -m kinetirun`.
 
-Phase 6 milestone - smoothed poses feeding a time-indexed motion history, with
-live velocity readouts. Press R to recalibrate. No movement detection yet.
+Phase 7 milestone - full squat detection with a live state machine readout.
+Still no game input: completed squats are printed and shown, nothing else.
 """
 
 import time
@@ -10,11 +10,12 @@ import cv2
 
 from kinetirun.camera import Camera, CameraError, FpsCounter
 from kinetirun.calibration import CalibrationState, Calibrator
+from kinetirun.movement import SquatDetector
 from kinetirun.tracking import BodyPose, MotionHistory, PoseSmoother
 from kinetirun.ui import draw_skeleton, draw_text, format_stats
 from kinetirun.vision import PoseEstimationError, PoseEstimator
 
-WINDOW_NAME = "KinetiRun - motion"
+WINDOW_NAME = "KinetiRun - squat"
 
 KEY_ESCAPE = 27
 
@@ -30,6 +31,9 @@ def run() -> None:
     calibrator = Calibrator()
     smoother = PoseSmoother()
     history = MotionHistory()
+    squats = SquatDetector()
+    squat_count = 0
+    last_event = None
     frames = 0
     warned = False
 
@@ -65,6 +69,19 @@ def run() -> None:
 
                 calibrator.update(pose)
 
+                # Detection only runs once a baseline exists: every threshold
+                # is expressed relative to it.
+                if calibrator.baseline is not None:
+                    event = squats.update(pose, calibrator.baseline, history)
+                    if event is not None:
+                        squat_count += 1
+                        last_event = event
+                        print(
+                            f"{event.type.value}  #{squat_count}  "
+                            f"depth={event.displacement:.2f}  "
+                            f"{event.duration:.2f}s  quality={event.quality:.2f}"
+                        )
+
                 draw_text(
                     frame,
                     format_stats(
@@ -75,6 +92,10 @@ def run() -> None:
                         progress=calibrator.progress,
                         baseline=calibrator.baseline,
                         history=history,
+                        squat_state=squats.state.value,
+                        squat_progress=squats.progress,
+                        squat_count=squat_count,
+                        last_event=last_event,
                     ),
                 )
                 cv2.imshow(WINDOW_NAME, frame)
@@ -99,6 +120,7 @@ def run() -> None:
                     calibrator.reset()
                     smoother.reset()
                     history.clear()
+                    squats.reset()
 
                 if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
                     break
