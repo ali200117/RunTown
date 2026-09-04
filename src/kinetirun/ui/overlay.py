@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 
 from kinetirun.calibration import Baseline, CalibrationState
-from kinetirun.tracking import BodyPose
+from kinetirun.tracking import BodyPose, MotionHistory
 from kinetirun.vision.landmarks import POSE_CONNECTIONS, Landmark
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
@@ -90,6 +90,7 @@ def format_stats(
     state: Optional[CalibrationState] = None,
     progress: float = 0.0,
     baseline: Optional[Baseline] = None,
+    history: Optional[MotionHistory] = None,
 ) -> list[str]:
     """Build the debug readout shown in the corner of the window.
 
@@ -120,6 +121,22 @@ def format_stats(
         lines.append(f"Sideways:  {baseline.lateral_offset(pose):+.2f} sw")
         lines.append(f"Vertical:  {baseline.vertical_offset(pose):+.2f} sw")
         lines.append(f"Knee angle: {pose.mean_knee_angle:.0f} deg")
+        if history is not None:
+            # Rates of change, in body units per second. These are what turn a
+            # position into a movement: a detector reads direction and speed
+            # from the sign and size of these numbers.
+            drop_rate = history.velocity(baseline.hip_drop)
+            side_rate = history.velocity(baseline.lateral_offset)
+            lines.append(
+                f"Drop rate: {drop_rate:+.2f}/s" if drop_rate is not None
+                else "Drop rate: --"
+            )
+            lines.append(
+                f"Side rate: {side_rate:+.2f}/s" if side_rate is not None
+                else "Side rate: --"
+            )
+            lines.append(f"History: {history.span:.1f}s ({len(history)} poses)")
+
         lines.append(
             f"Lower-body vis: {pose.lower_body_visibility:.2f}"
             f"{'' if pose.is_reliable() else '  UNRELIABLE'}"

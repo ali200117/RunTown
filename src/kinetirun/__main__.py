@@ -1,7 +1,7 @@
 """Entry point: `uv run python -m kinetirun`.
 
-Phase 5 milestone - stand still to calibrate, then watch the body-relative
-ratios that movement detection will consume. Press R to recalibrate.
+Phase 6 milestone - smoothed poses feeding a time-indexed motion history, with
+live velocity readouts. Press R to recalibrate. No movement detection yet.
 """
 
 import time
@@ -10,11 +10,11 @@ import cv2
 
 from kinetirun.camera import Camera, CameraError, FpsCounter
 from kinetirun.calibration import CalibrationState, Calibrator
-from kinetirun.tracking import BodyPose
+from kinetirun.tracking import BodyPose, MotionHistory, PoseSmoother
 from kinetirun.ui import draw_skeleton, draw_text, format_stats
 from kinetirun.vision import PoseEstimationError, PoseEstimator
 
-WINDOW_NAME = "KinetiRun - calibration"
+WINDOW_NAME = "KinetiRun - motion"
 
 KEY_ESCAPE = 27
 
@@ -28,6 +28,8 @@ def run() -> None:
     """Main capture and inference loop."""
     counter = FpsCounter()
     calibrator = Calibrator()
+    smoother = PoseSmoother()
+    history = MotionHistory()
     frames = 0
     warned = False
 
@@ -53,6 +55,11 @@ def run() -> None:
                 # This is the boundary crossing: from here on the loop works
                 # with our own type, and the MediaPipe result is discarded.
                 pose = BodyPose.from_landmarker_result(result, timestamp=now)
+                # Order matters: smooth before anything measures the pose, so
+                # every consumer sees the same stable numbers.
+                pose = smoother.smooth(pose)
+                history.append(pose)
+
                 if pose is not None:
                     draw_skeleton(frame, pose.image)
 
@@ -67,6 +74,7 @@ def run() -> None:
                         state=calibrator.state,
                         progress=calibrator.progress,
                         baseline=calibrator.baseline,
+                        history=history,
                     ),
                 )
                 cv2.imshow(WINDOW_NAME, frame)
@@ -89,6 +97,8 @@ def run() -> None:
                     break
                 if key == ord("r"):
                     calibrator.reset()
+                    smoother.reset()
+                    history.clear()
 
                 if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
                     break
